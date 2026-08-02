@@ -63,7 +63,7 @@ namespaced selected id を bare id に変えます。
 | `webSearchSidecar?` | `OcxWebSearchSidecarConfig` | on | ウェブ検索サイドカーオプション（下記参照）。 |
 | `visionSidecar?` | `OcxVisionSidecarConfig` | on | ビジョンサイドカーオプション（下記参照）。 |
 | `tokenGuardian?` | `OcxTokenGuardianConfig` | off | 選択型の proactive OAuth 更新と Codex アカウント warmup ポリシー。フィールドは下で説明します。 |
-| `corsAllowOrigins?` | `string[]` | `[]` | CORS で追加で許可する正確な origin。loopback origin は常に許可します。 |
+| `corsAllowOrigins?` | `string[]` | `[]` | CORS で追加で許可する正確な origin。loopback origin は常に許可します。`chrome-extension://<extension-id>` など、authority ベースのブラウザー拡張機能の origin に対応しています。`*` はワイルドカードではありません。 |
 
 `codexAccountNamespaces` のキーは公開 selector です。長さは 1〜64 文字、先頭と末尾は ASCII
 英数字、内部には英数字、`.`、`_`、`-` を使用でき、予約済み JavaScript object 名は拒否されます。

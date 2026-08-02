@@ -68,7 +68,7 @@ opencodex настраивается файлом `~/.opencodex/config.json`. Е
 | `webSearchSidecar?` | `OcxWebSearchSidecarConfig` | вкл. | Параметры сайдкара веб-поиска (см. ниже). |
 | `visionSidecar?` | `OcxVisionSidecarConfig` | вкл. | Параметры vision-сайдкара (см. ниже). |
 | `tokenGuardian?` | `OcxTokenGuardianConfig` | выкл. | Необязательная политика проактивного обновления OAuth и прогрева аккаунтов Codex; поля перечислены ниже. |
-| `corsAllowOrigins?` | `string[]` | `[]` | Дополнительные точные origin, разрешённые CORS. Loopback-origin разрешены всегда. |
+| `corsAllowOrigins?` | `string[]` | `[]` | Дополнительные точные origin, разрешённые CORS. Loopback-origin разрешены всегда. Поддерживаются origin расширений браузера на основе authority, например `chrome-extension://<extension-id>`; `*` не является подстановочным знаком. |
 
 Ключи `codexAccountNamespaces` — публичные селекторы длиной 1–64 символа. Они должны начинаться и
 заканчиваться ASCII-буквой или цифрой; внутри разрешены буквы, цифры, `.`, `_` и `-`. Зарезервированные
