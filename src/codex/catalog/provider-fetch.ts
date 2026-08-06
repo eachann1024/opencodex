@@ -607,6 +607,83 @@ export function applyConfigHintsToCachedModels(name: string, prov: OcxProviderCo
   return models.map(model => applyProviderConfigHints(name, prov, model, contextCap));
 }
 
+/**
+ * Last-resort context window for combo member synthesis when discovery and
+ * provider config both omit one. Matches the catalog entry default in
+ * `normalizeRoutedCatalogEntry` so incomplete live rows still catalog.
+ */
+const COMBO_MEMBER_CONTEXT_FALLBACK = 128_000;
+
+/**
+ * Resolve a combo target to a catalog member for derivation.
+ * Prefer discovery metadata; when the target is missing from the gather map or
+ * lacks a positive contextWindow, synthesize from the (registry-enriched)
+ * provider config so combos remain catalogued when targets are configured but
+ * discovery metadata is incomplete. Disabled/missing providers stay unresolved.
+ * When hints still omit contextWindow, apply COMBO_MEMBER_CONTEXT_FALLBACK so a
+ * live row without ctx (common for LiteLLM / custom xai ids) does not drop the
+ * whole combo from the public catalog.
+ */
+export function resolveComboCatalogMember(
+  target: { provider: string; model: string },
+  memberByKey: ReadonlyMap<string, CatalogModel>,
+  providers: ReadonlyMap<string, OcxProviderConfig>,
+  contextCap?: number,
+): CatalogModel | undefined {
+  const existing = memberByKey.get(targetKey(target));
+  if (
+    existing
+    && typeof existing.contextWindow === "number"
+    && existing.contextWindow > 0
+  ) {
+    return existing;
+  }
+
+  const prov = providers.get(target.provider);
+  // Disabled providers cannot contribute usable members. Missing provider with
+  // an incomplete existing row still needs the conservative fallback below so
+  // a configured target is not silently dropped solely for missing ctx.
+  if (prov?.disabled === true) return existing;
+
+  const base: CatalogModel = existing ?? {
+    id: target.model,
+    provider: target.provider,
+  };
+  // Reuse the same hint path configured/static catalog rows use when a provider
+  // config exists; otherwise keep the base (possibly incomplete) discovery row.
+  const hinted = prov
+    ? applyProviderConfigHints(target.provider, prov, base, contextCap)
+    : base;
+  const hintedContext = typeof hinted.contextWindow === "number" && hinted.contextWindow > 0
+    ? hinted.contextWindow
+    : undefined;
+  // Prefer config/discovery; fall back so incomplete live rows still catalog.
+  // Fully missing target + no provider still cannot be invented without a name
+  // in providers — but once the target is listed on a known provider (or already
+  // present in the gather map), a conservative window is enough for derivation.
+  const contextWindow = hintedContext
+    ?? (existing || prov ? COMBO_MEMBER_CONTEXT_FALLBACK : undefined);
+  if (contextWindow === undefined) return undefined;
+
+  const inputModalities = hinted.inputModalities ?? base.inputModalities ?? ["text"];
+  // applyProviderConfigHints already folds configuredReasoningEfforts; keep an
+  // explicit fallback for stubs that only had base fields.
+  const reasoningEfforts = hinted.reasoningEfforts
+    ?? (prov ? configuredReasoningEfforts(prov, target.model) : undefined)
+    ?? base.reasoningEfforts;
+  const maxInputTokens = typeof hinted.maxInputTokens === "number" && hinted.maxInputTokens > 0
+    ? hinted.maxInputTokens
+    : contextWindow;
+
+  return {
+    ...hinted,
+    inputModalities,
+    ...(reasoningEfforts !== undefined ? { reasoningEfforts } : {}),
+    contextWindow,
+    maxInputTokens,
+  };
+}
+
 export function isDatedVariantId(liveId: string, configuredId: string): boolean {
   if (!liveId.startsWith(`${configuredId}-`)) return false;
   return /^\d{8}$/.test(liveId.slice(configuredId.length + 1));
@@ -1262,11 +1339,19 @@ async function gatherRoutedModelsUncached(
       if (!memberByKey.has(key)) memberByKey.set(key, synthetic);
     }
   }
+  // Enriched (registry-hydrated) provider clones — shared by combo member synthesis and
+  // custom-model vision-sidecar inheritance so both see the same merged registry view.
+  const enrichedByName = new Map(activeProviders.map(provider => [provider.name, provider.provider]));
   for (const id of listComboIds(config)) {
     const combo = getCombo(config, id);
     if (!combo) continue;
     const members = combo.targets
-      .map(target => memberByKey.get(targetKey(target)))
+      .map(target => resolveComboCatalogMember(
+        target,
+        memberByKey,
+        enrichedByName,
+        providerContextCap(config, target.provider),
+      ))
       .filter((member): member is CatalogModel => member !== undefined);
     const derived = deriveComboCatalogModel(id, combo, members);
     if (derived) all.push(derived);
@@ -1274,9 +1359,6 @@ async function gatherRoutedModelsUncached(
   }
   replaceLastComboCatalogOmissions(localOmissions);
   all.sort((a, b) => (a.provider === b.provider ? a.id.localeCompare(b.id) : a.provider.localeCompare(b.provider)));
-  // Enriched (registry-hydrated) provider clones, keyed by name — the same view used above so
-  // custom rows get the same noVisionModels / inputModalities treatment as discovered rows.
-  const enrichedByName = new Map(activeProviders.map(provider => [provider.name, provider.provider]));
   // Provider-derived rows keyed by their Codex-facing slug: a custom override replaces the row
   // with the same slug below, so that row's provider capability metadata is the inheritance source.
   const replacedByRoutedSlug = new Map(all.map(model => [routedSlug(model.provider, model.id), model]));

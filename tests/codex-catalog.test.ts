@@ -2,7 +2,7 @@ import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { augmentRoutedModelsWithJawcodeMetadata, augmentRoutedModelsWithRegistryOpenAiApiRows, buildCatalogEntries, buildComboCatalogOmission, catalogModelSlug, clampCatalogModelsToCodexSupport, clampEntryToCodexSupportedEfforts, clampedDefaultEffort, comboCatalogOmissionReason, deriveComboCatalogModel, exactComboCatalogSlugs, filterCatalogVisibleModels, filterSupportedNativeSlugs, gatherRoutedModels as gatherRoutedModelsDirect, isDatedVariantId, isMediaGenerationModelId, loadBundledCodexCatalog, materializeBundledCodexCatalog, mergeCatalogEntriesForSync, NATIVE_OPENAI_MODELS, normalizeRoutedCatalogEntry, resetCatalogRuntimeStateForTests, resetOpenAiApiCatalogWarningStateForTests, shouldExposeRoutedModel } from "../src/codex/catalog";
+import { augmentRoutedModelsWithJawcodeMetadata, augmentRoutedModelsWithRegistryOpenAiApiRows, buildCatalogEntries, buildComboCatalogOmission, catalogModelSlug, clampCatalogModelsToCodexSupport, clampEntryToCodexSupportedEfforts, clampedDefaultEffort, comboCatalogOmissionReason, deriveComboCatalogModel, exactComboCatalogSlugs, filterCatalogVisibleModels, filterSupportedNativeSlugs, gatherRoutedModels as gatherRoutedModelsDirect, isDatedVariantId, isMediaGenerationModelId, loadBundledCodexCatalog, materializeBundledCodexCatalog, mergeCatalogEntriesForSync, NATIVE_OPENAI_MODELS, normalizeRoutedCatalogEntry, resetCatalogRuntimeStateForTests, resetOpenAiApiCatalogWarningStateForTests, resolveComboCatalogMember, shouldExposeRoutedModel } from "../src/codex/catalog";
 import { withStubbedProviderFetch } from "./helpers/catalog-provider-fetch";
 import {
   CURSOR_STATIC_MODELS,
@@ -499,7 +499,9 @@ describe("combo catalog capability intersection", () => {
       },
       combos: {
         mixed: { targets: [{ provider: "a", model: "m1" }, { provider: "b", model: "m2" }] },
-        hidden: { targets: [{ provider: "a", model: warningSentinel }] },
+        // Unknown provider (not just unlisted model) — synthesis cannot invent a member,
+        // and the secret in the model id must still be redacted in the omission warning.
+        hidden: { targets: [{ provider: warningSentinel, model: "m1" }] },
       },
       disabledModels: ["combo/mixed"],
     };
@@ -671,6 +673,175 @@ describe("combo catalog capability intersection", () => {
     expect(openaiRows).toEqual([]);
     expect(rows.some(r => r.provider === "combo" && r.id === "solo")).toBe(true);
   });
+
+  test("synthesizes missing combo targets from provider config metadata", async () => {
+    // Target model is not in models[] (so never lands in memberByKey) but provider
+    // config carries context/modalities/efforts — combo derivation must still catalog.
+    const config: OcxConfig = {
+      port: 10100,
+      defaultProvider: "a",
+      providers: {
+        a: {
+          adapter: "openai-chat",
+          baseUrl: "https://a.example/v1",
+          liveModels: false,
+          models: ["listed"],
+          modelContextWindows: { listed: 200_000, unlisted: 128_000 },
+          modelInputModalities: { unlisted: ["text"] },
+          modelReasoningEfforts: { unlisted: ["low", "medium", "high"] },
+        },
+        b: {
+          adapter: "openai-chat",
+          baseUrl: "https://b.example/v1",
+          liveModels: false,
+          models: ["m2"],
+          modelContextWindows: { m2: 100_000 },
+          modelReasoningEfforts: { m2: ["low", "medium"] },
+        },
+      },
+      combos: {
+        recovered: {
+          targets: [
+            { provider: "a", model: "unlisted" },
+            { provider: "b", model: "m2" },
+          ],
+        },
+      },
+    };
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      resetCatalogRuntimeStateForTests();
+      const rows = await gatherRoutedModels(config);
+      const combo = rows.find(r => r.provider === "combo" && r.id === "recovered");
+      expect(combo).toBeDefined();
+      expect(combo!.contextWindow).toBe(100_000);
+      expect(combo!.inputModalities).toEqual(["text"]);
+      expect(combo!.reasoningEfforts).toEqual(["low", "medium"]);
+      // Synthesized member must not leak as a standalone routed row.
+      expect(rows.some(r => r.provider === "a" && r.id === "unlisted")).toBe(false);
+      const { getLastComboCatalogOmissions } = await import("../src/codex/catalog");
+      expect(getLastComboCatalogOmissions().some(item => item.id === "recovered")).toBe(false);
+    } finally {
+      warn.mockRestore();
+    }
+  }, 15_000);
+
+  test("resolveComboCatalogMember fills incomplete members from provider config", () => {
+    // Member is present but lacks contextWindow; provider.contextWindow + efforts complete it.
+    const incomplete = {
+      provider: "a",
+      id: "m1",
+      // no contextWindow — the incomplete_metadata trigger
+    };
+    const memberByKey = new Map([["a/m1", incomplete]]);
+    const providers = new Map([
+      ["a", {
+        adapter: "openai-chat" as const,
+        baseUrl: "https://a.example/v1",
+        contextWindow: 200_000,
+        modelReasoningEfforts: { m1: ["low", "medium", "high"] },
+      }],
+    ]);
+    const resolved = resolveComboCatalogMember(
+      { provider: "a", model: "m1" },
+      memberByKey,
+      providers,
+    );
+    expect(resolved).toMatchObject({
+      provider: "a",
+      id: "m1",
+      contextWindow: 200_000,
+      maxInputTokens: 200_000,
+      inputModalities: ["text"],
+      reasoningEfforts: ["low", "medium", "high"],
+    });
+    // Complete members are returned as-is without re-synthesis side effects.
+    const complete = {
+      provider: "a",
+      id: "m1",
+      contextWindow: 99_000,
+      inputModalities: ["text", "image"],
+      reasoningEfforts: ["high"],
+    };
+    expect(resolveComboCatalogMember(
+      { provider: "a", model: "m1" },
+      new Map([["a/m1", complete]]),
+      providers,
+    )).toBe(complete);
+    // Known provider without context metadata still gets the conservative fallback.
+    expect(resolveComboCatalogMember(
+      { provider: "a", model: "ghost" },
+      new Map(),
+      new Map([["a", { adapter: "openai-chat", baseUrl: "https://a.example/v1" }]]),
+    )).toMatchObject({
+      provider: "a",
+      id: "ghost",
+      contextWindow: 128_000,
+      maxInputTokens: 128_000,
+      inputModalities: ["text"],
+    });
+    // No provider entry and no discovery row — cannot invent a member.
+    expect(resolveComboCatalogMember(
+      { provider: "missing", model: "ghost" },
+      new Map(),
+      new Map(),
+    )).toBeUndefined();
+  });
+
+  test("still omits combos when synthesis cannot recover hard failures", async () => {
+    const config: OcxConfig = {
+      port: 10100,
+      defaultProvider: "a",
+      providers: {
+        a: {
+          adapter: "openai-chat",
+          baseUrl: "https://a.example/v1",
+          liveModels: false,
+          models: ["m1"],
+          modelContextWindows: { m1: 128_000 },
+          // Disjoint modalities with b → empty intersection (incompatible_modalities).
+          modelInputModalities: { m1: ["image"] },
+        },
+        b: {
+          adapter: "openai-chat",
+          baseUrl: "https://b.example/v1",
+          liveModels: false,
+          models: ["m2"],
+          modelContextWindows: { m2: 128_000 },
+          modelInputModalities: { m2: ["audio"] },
+        },
+      },
+      combos: {
+        disjoint: {
+          targets: [
+            { provider: "a", model: "m1" },
+            { provider: "b", model: "m2" },
+          ],
+        },
+        ghost: {
+          // Provider does not exist — synthesis cannot invent a member.
+          targets: [{ provider: "missing-provider", model: "never-configured" }],
+        },
+      },
+    };
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      resetCatalogRuntimeStateForTests();
+      const rows = await gatherRoutedModels(config);
+      expect(rows.some(r => r.provider === "combo" && r.id === "disjoint")).toBe(false);
+      expect(rows.some(r => r.provider === "combo" && r.id === "ghost")).toBe(false);
+      const { getLastComboCatalogOmissions } = await import("../src/codex/catalog");
+      const omissions = getLastComboCatalogOmissions();
+      expect(omissions.find(item => item.id === "disjoint")).toMatchObject({
+        reason: "incompatible_modalities",
+      });
+      expect(omissions.find(item => item.id === "ghost")).toMatchObject({
+        reason: "incomplete_metadata",
+      });
+    } finally {
+      warn.mockRestore();
+    }
+  }, 15_000);
 });
 
 describe("Google Gemini catalog metadata", () => {

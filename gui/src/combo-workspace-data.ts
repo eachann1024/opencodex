@@ -8,7 +8,15 @@ export type ComboEffort = "low" | "medium" | "high" | "xhigh" | "max" | "ultra";
 
 export const COMBO_EFFORTS: ComboEffort[] = ["low", "medium", "high", "xhigh", "max", "ultra"];
 
-/** Intersection of per-member effort ladders; unknown ladders contribute no selectable efforts. */
+/**
+ * Intersection of per-member effort ladders for the default-effort picker.
+ * - `undefined` or empty ladder = no advertised rungs — does not constrain
+ *   (failover combos often mix unknown / no-reasoning members with models that
+ *   do publish a ladder; a single empty ladder must not zero the picker).
+ * - non-empty listed efforts = intersect as usual (filtered to COMBO_EFFORTS).
+ * When no complete target advertises a non-empty ladder, returns the full ladder.
+ * Runtime still omits injection per-target when a concrete ladder rejects the value.
+ */
 export function intersectComboEfforts(
   targets: readonly ComboTarget[],
   modelEfforts: ReadonlyMap<string, readonly string[] | undefined>,
@@ -20,11 +28,10 @@ export function intersectComboEfforts(
   for (const target of complete) {
     const key = `${target.provider.trim()}/${target.model.trim()}`;
     const listed = modelEfforts.get(key);
-    // Missing metadata must not invent a full ladder — runtime omits the combo default when
-    // supportedLadderFor is undefined (#488 / Codex review).
-    const member: string[] = listed === undefined
-      ? []
-      : listed.filter((effort) => effortSet.has(effort));
+    // Skip unknown / empty ladders so they do not empty the picker.
+    if (listed === undefined || listed.length === 0) continue;
+    const member = listed.filter((effort) => effortSet.has(effort));
+    if (member.length === 0) continue;
     if (common === null) {
       common = member;
     } else {
@@ -32,7 +39,9 @@ export function intersectComboEfforts(
       common = common.filter((effort) => memberSet.has(effort));
     }
   }
-  const commonSet = new Set(common ?? []);
+  // No constraining ladders among complete targets → full selectable set.
+  if (common === null) return [...COMBO_EFFORTS];
+  const commonSet = new Set(common);
   return COMBO_EFFORTS.filter((effort) => commonSet.has(effort));
 }
 

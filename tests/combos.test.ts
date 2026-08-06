@@ -228,11 +228,23 @@ describe("combo request cloning", () => {
     ).reasoning).toEqual({ summary: "concise", effort: "high" });
   });
 
-  test("omits combo defaults for unset, unsupported, and unknown target capabilities", () => {
+  test("omits combo defaults for unset and unsupported target capabilities", () => {
     expect(concreteComboRequestBody({ model: "combo/x" }, target, null, ["high"]).reasoning).toBeUndefined();
     expect(concreteComboRequestBody({ model: "combo/x" }, target, "high", []).reasoning).toBeUndefined();
-    expect(concreteComboRequestBody({ model: "combo/x" }, target, "high", undefined).reasoning).toBeUndefined();
     expect(concreteComboRequestBody({ model: "combo/x" }, target, "high", ["low", "medium"]).reasoning).toBeUndefined();
+  });
+
+  test("injects combo default optimistically when target ladder is unknown", () => {
+    expect(concreteComboRequestBody({ model: "combo/x" }, target, "high", undefined)).toEqual({
+      model: "a/m1",
+      reasoning: { effort: "high" },
+    });
+    expect(concreteComboRequestBody(
+      { model: "combo/x", reasoning: { summary: "auto" } },
+      target,
+      "medium",
+      undefined,
+    ).reasoning).toEqual({ summary: "auto", effort: "medium" });
   });
 
   test("debug-warns once per unsupported combo default", () => {

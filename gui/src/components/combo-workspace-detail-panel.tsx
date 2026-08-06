@@ -11,7 +11,7 @@ import { IconChevron, IconTrash } from "../icons";
 import { useT } from "../i18n/shared";
 import { Notice } from "../ui";
 import type { ModelOption, ProviderOption } from "./combo-workspace-types";
-import { EffortSelect, StrategySeg, TargetEditor } from "./combo-workspace-controls";
+import { EffortSelect, PublicModelPreview, StrategySeg, TargetEditor } from "./combo-workspace-controls";
 import { clampedNumberInput } from "./combo-workspace-utils";
 
 type DetailTab = "config" | "about";
@@ -188,9 +188,7 @@ export function DetailPanel({
                 }))}
               />
               <p className="muted" style={{ fontSize: 12, margin: "8px 0 0" }}>
-                {isCreate
-                  ? t("cws.field.idInternalHint")
-                  : t("cws.field.idHintEdit", { model: comboPublicModelId(draft.id, draft.alias) })}
+                {isCreate ? t("cws.field.idInternalHint") : t("cws.field.idHintEdit")}
               </p>
             </div>
             <div className="cwi-field">
@@ -210,6 +208,9 @@ export function DetailPanel({
               <p className="muted" style={{ fontSize: 12, margin: "8px 0 0" }}>
                 {t("cws.field.aliasHint")}
               </p>
+              <PublicModelPreview
+                model={draft.id.trim() ? comboPublicModelId(draft.id, draft.alias) : "…"}
+              />
             </div>
             <div className="cwi-field">
               <span className="field-label">{t("cws.strategy")}</span>

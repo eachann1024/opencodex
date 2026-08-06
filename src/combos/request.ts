@@ -40,7 +40,10 @@ export function concreteComboRequestBody(
     && !Object.prototype.hasOwnProperty.call(reasoning, "effort")
   );
   if (!needsDefault) return clone;
-  if (!targetReasoningEfforts?.includes(defaultEffort)) {
+  // Unknown ladder (`undefined`): inject optimistically — catalog metadata is
+  // incomplete more often than the provider truly lacks the effort. Explicit
+  // arrays still gate: missing default → omit + debug warn.
+  if (targetReasoningEfforts !== undefined && !targetReasoningEfforts.includes(defaultEffort)) {
     const key = `${target.provider}/${target.model}:${defaultEffort}`;
     if (!warnedUnsupportedDefaults.has(key)) {
       warnedUnsupportedDefaults.add(key);
@@ -48,7 +51,7 @@ export function concreteComboRequestBody(
         provider: target.provider,
         model: target.model,
         requestedEffort: defaultEffort,
-        capability: targetReasoningEfforts === undefined ? "unknown" : "unsupported",
+        capability: "unsupported",
       });
     }
     return clone;

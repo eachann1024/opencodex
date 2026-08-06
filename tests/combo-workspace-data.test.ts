@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   type ComboItem,
+  COMBO_EFFORTS,
   buildComboAttention,
   comboPublicModelId,
   draftEquals,
@@ -171,14 +172,36 @@ describe("combo-workspace-data", () => {
     )).toEqual(["medium", "high"]);
   });
 
-  test("intersectComboEfforts treats unknown members as having no selectable efforts", () => {
+  test("intersectComboEfforts ignores unknown members (wildcard) and keeps known intersection", () => {
     const map = new Map<string, readonly string[] | undefined>([
-      ["a/m1", ["low", "medium"]],
+      ["a/m1", ["low", "medium", "high"]],
+      // b/unknown missing → undefined wildcard, must not empty the picker
     ]);
     expect(intersectComboEfforts(
       [{ provider: "a", model: "m1" }, { provider: "b", model: "unknown" }],
       map,
-    )).toEqual([]);
+    )).toEqual(["low", "medium", "high"]);
+  });
+
+  test("intersectComboEfforts returns full ladder when all members are unknown", () => {
+    const map = new Map<string, readonly string[] | undefined>([
+      ["a/m1", undefined],
+    ]);
+    expect(intersectComboEfforts(
+      [{ provider: "a", model: "m1" }, { provider: "b", model: "m2" }],
+      map,
+    )).toEqual([...COMBO_EFFORTS]);
+  });
+
+  test("intersectComboEfforts ignores empty ladders so failover combos stay selectable", () => {
+    const map = new Map<string, readonly string[] | undefined>([
+      ["a/m1", ["low", "medium"]],
+      ["b/m2", []],
+    ]);
+    expect(intersectComboEfforts(
+      [{ provider: "a", model: "m1" }, { provider: "b", model: "m2" }],
+      map,
+    )).toEqual(["low", "medium"]);
   });
 
   test("attention flags zero-target and one-target defensive rows", () => {
