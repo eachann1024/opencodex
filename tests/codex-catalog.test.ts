@@ -780,6 +780,30 @@ describe("combo catalog capability intersection", () => {
       maxInputTokens: 128_000,
       inputModalities: ["text"],
     });
+    // Provider contextCap below the 128k fallback clamps the synthesized window.
+    expect(resolveComboCatalogMember(
+      { provider: "a", model: "ghost" },
+      new Map(),
+      new Map([["a", { adapter: "openai-chat", baseUrl: "https://a.example/v1" }]]),
+      64_000,
+    )).toMatchObject({
+      provider: "a",
+      id: "ghost",
+      contextWindow: 64_000,
+      maxInputTokens: 64_000,
+      contextCap: 64_000,
+      contextCapped: true,
+    });
+    // Cap above the fallback leaves 128k (no artificial raise, no capped flag).
+    expect(resolveComboCatalogMember(
+      { provider: "a", model: "ghost" },
+      new Map(),
+      new Map([["a", { adapter: "openai-chat", baseUrl: "https://a.example/v1" }]]),
+      200_000,
+    )).toMatchObject({
+      contextWindow: 128_000,
+      maxInputTokens: 128_000,
+    });
     // No provider entry and no discovery row — cannot invent a member.
     expect(resolveComboCatalogMember(
       { provider: "missing", model: "ghost" },

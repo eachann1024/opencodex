@@ -661,9 +661,23 @@ export function resolveComboCatalogMember(
   // Fully missing target + no provider still cannot be invented without a name
   // in providers — but once the target is listed on a known provider (or already
   // present in the gather map), a conservative window is enough for derivation.
-  const contextWindow = hintedContext
+  // Pure ghosts (no discovery row) on a known provider still synthesize: live
+  // discovery is often incomplete for LiteLLM/custom relays, and dropping the
+  // whole combo solely for a missing /v1/models row is worse than a 128k stub.
+  // Tightening to "models list / modelContextWindows / modelReasoningEfforts
+  // only" would re-break that recovery path.
+  const uncappedContext = hintedContext
     ?? (existing || prov ? COMBO_MEMBER_CONTEXT_FALLBACK : undefined);
-  if (contextWindow === undefined) return undefined;
+  if (uncappedContext === undefined) return undefined;
+  // Fallback bypasses applyProviderConfigHints' cap path — clamp here so a
+  // providerContextCaps value below 128k still wins (same semantics as hints).
+  const usedFallback = hintedContext === undefined;
+  const cappedContext = applyProviderContextCap(uncappedContext, contextCap);
+  const contextWindow = cappedContext ?? uncappedContext;
+  const fallbackCapped = usedFallback
+    && contextCap !== undefined
+    && cappedContext !== undefined
+    && cappedContext !== uncappedContext;
 
   const inputModalities = hinted.inputModalities ?? base.inputModalities ?? ["text"];
   // applyProviderConfigHints already folds configuredReasoningEfforts; keep an
@@ -672,7 +686,7 @@ export function resolveComboCatalogMember(
     ?? (prov ? configuredReasoningEfforts(prov, target.model) : undefined)
     ?? base.reasoningEfforts;
   const maxInputTokens = typeof hinted.maxInputTokens === "number" && hinted.maxInputTokens > 0
-    ? hinted.maxInputTokens
+    ? Math.min(hinted.maxInputTokens, contextWindow)
     : contextWindow;
 
   return {
@@ -681,6 +695,7 @@ export function resolveComboCatalogMember(
     ...(reasoningEfforts !== undefined ? { reasoningEfforts } : {}),
     contextWindow,
     maxInputTokens,
+    ...(fallbackCapped ? { contextCap, contextCapped: true as const } : {}),
   };
 }
 

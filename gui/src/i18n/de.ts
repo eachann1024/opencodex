@@ -1676,6 +1676,7 @@ export const de: Record<TKey, string> = {
   "cws.allCombos": "Alle Combos",
   "cws.copyModel": "ID kopieren",
   "cws.copied": "Kopiert",
+  "cws.copyUnavailable": "Zwischenablage nicht verfügbar",
   "cws.copyPublicModel": "Kopieren",
   "cws.copiedPublicModel": "Kopiert",
   "cws.tab.config": "Konfiguration",

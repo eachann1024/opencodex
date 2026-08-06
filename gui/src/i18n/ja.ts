@@ -1740,6 +1740,7 @@ export const ja: Record<TKey, string> = {
   "cws.allCombos": "すべてのコンボ",
   "cws.copyModel": "ID をコピー",
   "cws.copied": "コピーしました",
+  "cws.copyUnavailable": "クリップボードを利用できません",
   "cws.copyPublicModel": "コピー",
   "cws.copiedPublicModel": "コピーしました",
   "cws.renamed": "{from} を {to} に変更しました。",

@@ -1696,6 +1696,7 @@ export const zh: Record<TKey, string> = {
   "cws.allCombos": "全部组合",
   "cws.copyModel": "复制 ID",
   "cws.copied": "已复制",
+  "cws.copyUnavailable": "剪贴板不可用",
   "cws.copyPublicModel": "复制",
   "cws.copiedPublicModel": "已复制",
   "cws.tab.config": "配置",

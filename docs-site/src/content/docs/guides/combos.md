@@ -153,16 +153,18 @@ quota, and overload failures; it does not hide caller errors or policy refusals.
 
 1. the combo has a non-null default;
 2. the caller did not set an effort; and
-3. the selected target's catalog advertises that exact effort.
+3. the selected target does not advertise a known effort ladder that rejects the value.
 
 If the request has no `reasoning` object, opencodex creates one. If `reasoning` exists without an
 `effort` property, it preserves the other fields and adds the default. A caller-provided effort is
 never overwritten.
 
-When target capability is unknown or does not include the configured effort, opencodex omits the
-default and leaves the target's own behavior unchanged. Supported values are `low`, `medium`,
-`high`, `xhigh`, `max`, and `ultra`; omit the field or set it to `null` to leave effort entirely to
-the caller and target.
+When the target's catalog effort ladder is unknown (metadata missing), the default is injected
+optimistically — incomplete discovery is more common than a provider that truly lacks the effort.
+When a *known* ladder is present and does not include the configured value, opencodex omits the
+default, leaves the target's own behavior unchanged, and logs a one-shot debug note. Supported
+values are `low`, `medium`, `high`, `xhigh`, `max`, and `ultra`; omit the field or set it to `null`
+to leave effort entirely to the caller and target.
 
 ## Encrypted v2 sub-agent tasks
 

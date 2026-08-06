@@ -1709,6 +1709,7 @@ export const en = {
   "cws.allCombos": "All combos",
   "cws.copyModel": "Copy id",
   "cws.copied": "Copied",
+  "cws.copyUnavailable": "Clipboard unavailable",
   "cws.copyPublicModel": "Copy",
   "cws.copiedPublicModel": "Copied",
   "cws.tab.config": "Config",
