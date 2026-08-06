@@ -23,6 +23,17 @@ export function comboIdFromRawBody(body: unknown, config: OcxConfig): string | n
   return resolveComboId(config, model);
 }
 
+export function comboRequestHasImageInput(body: unknown): boolean {
+  const visit = (value: unknown): boolean => {
+    if (!value || typeof value !== "object") return false;
+    if (Array.isArray(value)) return value.some(visit);
+    const record = value as Record<string, unknown>;
+    if (record.type === "input_image") return true;
+    return Object.values(record).some(visit);
+  };
+  return visit(body);
+}
+
 export function concreteComboRequestBody(
   body: unknown,
   target: Pick<OcxComboTarget, "provider" | "model">,
@@ -40,10 +51,10 @@ export function concreteComboRequestBody(
     && !Object.prototype.hasOwnProperty.call(reasoning, "effort")
   );
   if (!needsDefault) return clone;
-  // Unknown ladder (`undefined`): inject optimistically — catalog metadata is
-  // incomplete more often than the provider truly lacks the effort. Explicit
-  // arrays still gate: missing default → omit + debug warn.
-  if (targetReasoningEfforts !== undefined && !targetReasoningEfforts.includes(defaultEffort)) {
+  // Fail closed for both unknown (`undefined`) and known-but-missing ladders.
+  // Unknown is kept distinct in debug so we can measure thin catalog rows without
+  // guessing the provider accepts a reasoning field.
+  if (!targetReasoningEfforts?.includes(defaultEffort)) {
     const key = `${target.provider}/${target.model}:${defaultEffort}`;
     if (!warnedUnsupportedDefaults.has(key)) {
       warnedUnsupportedDefaults.add(key);
@@ -51,7 +62,7 @@ export function concreteComboRequestBody(
         provider: target.provider,
         model: target.model,
         requestedEffort: defaultEffort,
-        capability: "unsupported",
+        capability: targetReasoningEfforts === undefined ? "unknown" : "unsupported",
       });
     }
     return clone;

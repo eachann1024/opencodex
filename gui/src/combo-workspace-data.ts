@@ -45,6 +45,24 @@ export function intersectComboEfforts(
   return COMBO_EFFORTS.filter((effort) => commonSet.has(effort));
 }
 
+/**
+ * True when any complete target has no advertised effort ladder (undefined or
+ * empty). The picker treats those as wildcards, but runtime still fails closed
+ * for unknown ladders — surface that so options are not presented as fully known.
+ */
+export function comboHasUnknownEffortTargets(
+  targets: readonly ComboTarget[],
+  modelEfforts: ReadonlyMap<string, readonly string[] | undefined>,
+): boolean {
+  const complete = targets.filter((t) => t.provider.trim() && t.model.trim());
+  if (complete.length === 0) return false;
+  return complete.some((target) => {
+    const key = `${target.provider.trim()}/${target.model.trim()}`;
+    const listed = modelEfforts.get(key);
+    return listed === undefined || listed.length === 0;
+  });
+}
+
 export interface ComboTarget {
   provider: string;
   model: string;
@@ -73,6 +91,11 @@ export interface ComboItem {
   strategy: ComboStrategy;
   stickyLimit: number;
   defaultEffort: ComboEffort | null;
+  /**
+   * Image/multimodal policy. Default `auto` (checked) keeps the target
+   * intersection; `disabled` forces text-only.
+   */
+  imageInput?: "auto" | "disabled";
   targets: ComboTarget[];
 }
 
@@ -132,6 +155,10 @@ export function normalizeWeight(raw: unknown): number | undefined {
     : undefined;
 }
 
+export function normalizeImageInput(raw: unknown): "auto" | "disabled" {
+  return raw === "disabled" ? "disabled" : "auto";
+}
+
 export function parseComboList(payload: unknown): ComboItem[] {
   if (!payload || typeof payload !== "object") return [];
   const rows = (payload as { combos?: unknown }).combos;
@@ -162,6 +189,7 @@ export function parseComboList(payload: unknown): ComboItem[] {
       strategy: normalizeStrategy(r.strategy),
       stickyLimit: normalizeStickyLimit(r.stickyLimit),
       defaultEffort: normalizeDefaultEffort(r.defaultEffort),
+      imageInput: normalizeImageInput(r.imageInput),
       targets,
     });
   }
@@ -219,6 +247,7 @@ export function draftEquals(a: ComboItem, b: ComboItem): boolean {
     || a.strategy !== b.strategy
     || a.stickyLimit !== b.stickyLimit
     || a.defaultEffort !== b.defaultEffort
+    || (a.imageInput ?? "auto") !== (b.imageInput ?? "auto")
   ) return false;
   if (a.targets.length !== b.targets.length) return false;
   return a.targets.every((t, i) => {
@@ -235,6 +264,7 @@ export function toPutBody(item: ComboItem, options: { renameFrom?: string } = {}
     strategy: ComboStrategy;
     stickyLimit?: number;
     defaultEffort: ComboEffort | null;
+    imageInput?: "disabled";
     alias?: string;
   };
 } {
@@ -248,6 +278,7 @@ export function toPutBody(item: ComboItem, options: { renameFrom?: string } = {}
       strategy: item.strategy,
       defaultEffort: item.defaultEffort,
       ...(item.strategy === "round-robin" ? { stickyLimit: item.stickyLimit } : {}),
+      ...(item.imageInput === "disabled" ? { imageInput: "disabled" as const } : {}),
       ...(item.alias && item.alias.trim() ? { alias: item.alias.trim() } : {}),
     },
   };
@@ -335,6 +366,7 @@ export function emptyDraft(id = ""): ComboItem {
     strategy: "failover",
     stickyLimit: 1,
     defaultEffort: null,
+    imageInput: "auto",
     targets: [newComboTarget()],
   };
 }

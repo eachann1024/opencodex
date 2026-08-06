@@ -50,6 +50,7 @@ function normalizedCombo(
     strategy: "failover",
     stickyLimit: 1,
     defaultEffort: "medium",
+    imageInput: "auto",
     alias: null,
     targets: [
       { provider: "a", model: "m1", weight: 1 },
@@ -195,6 +196,17 @@ describe("combo catalog capability intersection", () => {
       memberA,
       { ...memberB, reasoningEfforts: ["medium", "high"] },
     ])?.defaultReasoningEffort).toBe("medium");
+  });
+
+  test("imageInput disabled strips image even when every member supports it", () => {
+    expect(deriveComboCatalogModel("text-only", normalizedCombo({ imageInput: "disabled" }), [
+      memberA,
+      { ...memberB, inputModalities: ["text", "image"] },
+    ])?.inputModalities).toEqual(["text"]);
+    expect(deriveComboCatalogModel("text-only", normalizedCombo({ imageInput: "auto" }), [
+      memberA,
+      { ...memberB, inputModalities: ["text", "image"] },
+    ])?.inputModalities).toEqual(["text", "image"]);
   });
 
   test("fails closed for missing members, unknown context, duplicate targets, and empty modalities", () => {

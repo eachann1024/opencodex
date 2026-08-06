@@ -14,6 +14,7 @@ import {
   comboIdFromRawBody,
   comboModelId,
   comboPublicModelId,
+  comboRequestHasImageInput,
   concreteComboRequestBody,
   coolComboTarget,
   getCombo,
@@ -191,6 +192,16 @@ describe("combo request cloning", () => {
 
   afterEach(() => resetComboEffortWarningStateForTests());
 
+  test("detects image input without treating ordinary text as media", () => {
+    expect(comboRequestHasImageInput({ input: [{ type: "input_text", text: "hello" }] })).toBe(false);
+    expect(comboRequestHasImageInput({
+      input: [{ type: "input_image", image_url: "data:image/png;base64,AA==" }],
+    })).toBe(true);
+    expect(comboRequestHasImageInput({
+      input: [{ role: "user", content: [{ type: "input_image", image_url: "https://x/y.png" }] }],
+    })).toBe(true);
+  });
+
   test("detects canonical and alias combo model ids in raw request records", () => {
     const config = baseConfig({ combos: { free: { ...VALID_COMBO, alias: "deepseek-v4-flash" } } });
     expect(comboIdFromRawBody({ model: "combo/free" }, config)).toBe("free");
@@ -228,26 +239,14 @@ describe("combo request cloning", () => {
     ).reasoning).toEqual({ summary: "concise", effort: "high" });
   });
 
-  test("omits combo defaults for unset and unsupported target capabilities", () => {
+  test("omits combo defaults for unset, unsupported, and unknown target capabilities", () => {
     expect(concreteComboRequestBody({ model: "combo/x" }, target, null, ["high"]).reasoning).toBeUndefined();
     expect(concreteComboRequestBody({ model: "combo/x" }, target, "high", []).reasoning).toBeUndefined();
+    expect(concreteComboRequestBody({ model: "combo/x" }, target, "high", undefined).reasoning).toBeUndefined();
     expect(concreteComboRequestBody({ model: "combo/x" }, target, "high", ["low", "medium"]).reasoning).toBeUndefined();
   });
 
-  test("injects combo default optimistically when target ladder is unknown", () => {
-    expect(concreteComboRequestBody({ model: "combo/x" }, target, "high", undefined)).toEqual({
-      model: "a/m1",
-      reasoning: { effort: "high" },
-    });
-    expect(concreteComboRequestBody(
-      { model: "combo/x", reasoning: { summary: "auto" } },
-      target,
-      "medium",
-      undefined,
-    ).reasoning).toEqual({ summary: "auto", effort: "medium" });
-  });
-
-  test("debug-warns once per unsupported combo default", () => {
+  test("debug-warns once per unsupported or unknown combo default", () => {
     const debug = spyOn(console, "debug").mockImplementation(() => {});
     concreteComboRequestBody({ model: "combo/x" }, target, "high", []);
     concreteComboRequestBody({ model: "combo/x" }, target, "high", []);
@@ -257,6 +256,13 @@ describe("combo request cloning", () => {
       model: "m1",
       requestedEffort: "high",
       capability: "unsupported",
+    });
+    concreteComboRequestBody({ model: "combo/x" }, target, "medium", undefined);
+    concreteComboRequestBody({ model: "combo/x" }, target, "medium", undefined);
+    expect(debug).toHaveBeenCalledTimes(2);
+    expect(debug.mock.calls[1]?.[1]).toMatchObject({
+      requestedEffort: "medium",
+      capability: "unknown",
     });
     debug.mockRestore();
   });
@@ -513,10 +519,16 @@ describe("combo validation and normalization", () => {
       strategy: "failover",
       stickyLimit: 1,
       defaultEffort: "high",
+      imageInput: "auto",
       alias: null,
       targets: [{ provider: "a", model: "m1", weight: 2 }],
     });
+    expect(normalizeComboConfig({
+      imageInput: "disabled",
+      targets: [{ provider: "a", model: "m1" }],
+    }).imageInput).toBe("disabled");
     expect(normalizeComboConfig({ targets: [{ provider: "a", model: "m1" }] }).defaultEffort).toBeNull();
+    expect(normalizeComboConfig({ targets: [{ provider: "a", model: "m1" }] }).imageInput).toBe("auto");
     expect(comboDefaultEffort(baseConfig(), "free")).toBeNull();
     const aliased = baseConfig({
       combos: { free: { ...VALID_COMBO, alias: "  deepseek-v4-flash  " } },

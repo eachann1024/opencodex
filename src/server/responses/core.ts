@@ -23,6 +23,7 @@ import {
   comboDefaultEffort,
   comboFailureDecision,
   comboIdFromRawBody,
+  comboRequestHasImageInput,
   concreteComboRequestBody,
   getCombo,
   isComboTargetInCooldown,
@@ -989,6 +990,9 @@ export async function handleComboResponses(
   const combo = getCombo(config, comboId);
   if (!combo) {
     return formatErrorResponse(404, "invalid_request_error", `Unknown combo: ${comboId}`);
+  }
+  if (combo.imageInput === "disabled" && comboRequestHasImageInput(rawBody)) {
+    return formatErrorResponse(400, "invalid_request_error", `Combo "${comboId}" does not accept image input`);
   }
   const adoptFailedChildLog = (childLog: RequestLogContext): void => {
     // Attempts remain the complete physical history; the logical row mirrors the most recent

@@ -1,9 +1,11 @@
 import { useState } from "react";
 import type { ComboEffort, ComboStrategy, ComboTarget } from "../combo-workspace-data";
 import { COMBO_EFFORTS, newComboTarget } from "../combo-workspace-data";
+import { comboImagesSupported } from "../combo-capabilities";
 import { IconArrowDown, IconArrowUp, IconGrip, IconPlus, IconTrash } from "../icons";
 import { useT } from "../i18n/shared";
 import { formatProviderDisplayName } from "../provider-icons";
+import { Switch } from "../ui";
 import type { ModelOption, ProviderOption } from "./combo-workspace-types";
 import { clampedNumberInput, enabledProviders, modelsForProvider } from "./combo-workspace-utils";
 import { useCopyFeedback } from "./use-copy-feedback";
@@ -46,6 +48,7 @@ export function EffortSelect({
   onChange,
   disabled,
   allowedEfforts,
+  hasUnknownTargets,
 }: {
   id: string;
   value: ComboEffort | null;
@@ -53,6 +56,8 @@ export function EffortSelect({
   disabled?: boolean;
   /** When set, only these efforts (plus None) are offered. */
   allowedEfforts?: readonly ComboEffort[];
+  /** Some targets have no catalog ladder — runtime may omit the default for them. */
+  hasUnknownTargets?: boolean;
 }) {
   const t = useT();
   const options = allowedEfforts ?? COMBO_EFFORTS;
@@ -72,15 +77,65 @@ export function EffortSelect({
           <option value={value}>{value} ({t("cws.field.defaultEffortUnsupportedOption")})</option>
         ) : null}
         {options.map((effort) => (
-          <option key={effort} value={effort}>{effort}</option>
+          <option key={effort} value={effort}>
+            {hasUnknownTargets
+              ? `${effort} (${t("cws.field.defaultEffortUnknownMarker")})`
+              : effort}
+          </option>
         ))}
       </select>
       {unsupported ? (
         <p className="muted" style={{ fontSize: 12, margin: "4px 0 0", color: "var(--danger, #b42318)" }}>
           {t("cws.field.defaultEffortUnsupported")}
         </p>
+      ) : hasUnknownTargets ? (
+        <p className="muted" style={{ fontSize: 12, margin: "4px 0 0" }}>
+          {t("cws.field.defaultEffortUnknown")}
+        </p>
       ) : null}
     </>
+  );
+}
+
+export function ComboCapabilities({
+  targets,
+  models,
+  imageInput,
+  disabled,
+  onChange,
+}: {
+  targets: ComboTarget[];
+  models: ModelOption[];
+  imageInput: "auto" | "disabled";
+  disabled?: boolean;
+  onChange: (patch: { imageInput?: "auto" | "disabled" }) => void;
+}) {
+  const t = useT();
+  const imagesSupported = comboImagesSupported(targets, models);
+  // Default: checked (auto) when supported; force off when any target lacks image.
+  const effectiveOn = imagesSupported && imageInput !== "disabled";
+
+  return (
+    <section className="cwi-capabilities" aria-label={t("cws.capabilities")}>
+      <span className="field-label">{t("cws.capabilities")}</span>
+      <div className="cwi-capability-row">
+        <div>
+          <span className="cwi-capability-label">{t("cws.capability.imageInput")}</span>
+          <p className="muted cwi-capability-hint">
+            {imagesSupported ? t("cws.capability.imageInputHint") : t("cws.capability.imageInputUnavailable")}
+          </p>
+        </div>
+        <Switch
+          on={effectiveOn}
+          onClick={() => {
+            if (!imagesSupported) return;
+            onChange({ imageInput: imageInput === "auto" ? "disabled" : "auto" });
+          }}
+          disabled={disabled || !imagesSupported}
+          label={t("cws.capability.imageInput")}
+        />
+      </div>
+    </section>
   );
 }
 

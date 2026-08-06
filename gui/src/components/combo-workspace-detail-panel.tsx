@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   type ComboItem,
+  comboHasUnknownEffortTargets,
   comboModelId,
   comboPublicModelId,
   draftEquals,
@@ -11,7 +12,7 @@ import { IconChevron, IconTrash } from "../icons";
 import { useT } from "../i18n/shared";
 import { Notice } from "../ui";
 import type { ModelOption, ProviderOption } from "./combo-workspace-types";
-import { EffortSelect, PublicModelPreview, StrategySeg, TargetEditor } from "./combo-workspace-controls";
+import { ComboCapabilities, EffortSelect, PublicModelPreview, StrategySeg, TargetEditor } from "./combo-workspace-controls";
 import { clampedNumberInput } from "./combo-workspace-utils";
 import { useCopyFeedback } from "./use-copy-feedback";
 
@@ -53,7 +54,7 @@ export function DetailPanel({
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const dirty = !draftEquals(draft, baseline);
-  const baselineSyncKey = `${baseline.id}:${baseline.alias ?? ""}:${baseline.strategy}:${baseline.stickyLimit}:${baseline.defaultEffort}:${baseline.targets.map((t) => `${t.provider}/${t.model}:${t.weight ?? 1}`).join(",")}`;
+  const baselineSyncKey = `${baseline.id}:${baseline.alias ?? ""}:${baseline.strategy}:${baseline.stickyLimit}:${baseline.defaultEffort}:${baseline.imageInput ?? "auto"}:${baseline.targets.map((t) => `${t.provider}/${t.model}:${t.weight ?? 1}`).join(",")}`;
   const effortMap = useMemo(() => {
     const map = new Map<string, string[] | undefined>();
     for (const model of models) {
@@ -63,6 +64,10 @@ export function DetailPanel({
   }, [models]);
   const allowedEfforts = useMemo(
     () => intersectComboEfforts(draft.targets, effortMap),
+    [draft.targets, effortMap],
+  );
+  const hasUnknownEffortTargets = useMemo(
+    () => comboHasUnknownEffortTargets(draft.targets, effortMap),
     [draft.targets, effortMap],
   );
 
@@ -234,6 +239,7 @@ export function DetailPanel({
                 value={draft.defaultEffort}
                 disabled={busy}
                 allowedEfforts={allowedEfforts}
+                hasUnknownTargets={hasUnknownEffortTargets}
                 onChange={(defaultEffort) => updateDraft((d) => ({ ...d, defaultEffort }))}
               />
               <p className="muted" style={{ fontSize: 12, margin: "8px 0 0" }}>
@@ -272,6 +278,13 @@ export function DetailPanel({
                 {draft.strategy === "failover" ? t("cws.targets.failoverHint") : t("cws.targets.roundRobinHint")}
               </p>
             </div>
+            <ComboCapabilities
+              targets={draft.targets}
+              models={models}
+              imageInput={draft.imageInput ?? "auto"}
+              disabled={busy}
+              onChange={(patch) => updateDraft((d) => ({ ...d, ...patch }))}
+            />
           </div>
         ) : (
           <section className="pwi-section">

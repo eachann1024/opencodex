@@ -8,6 +8,7 @@ import {
   emptyDraft,
   filterCombos,
   groupCombos,
+  comboHasUnknownEffortTargets,
   intersectComboEfforts,
   isValidComboId,
   parseComboList,
@@ -90,6 +91,7 @@ describe("combo-workspace-data", () => {
         strategy: "failover",
         stickyLimit: 1,
         defaultEffort: null,
+        imageInput: "auto",
         targets: [{ provider: "a", model: "m1", weight: 1, clientKey: expect.stringMatching(/^ct-\d+$/) }],
       },
       {
@@ -99,6 +101,7 @@ describe("combo-workspace-data", () => {
         strategy: "round-robin",
         stickyLimit: 4,
         defaultEffort: "high",
+        imageInput: "auto",
         targets: [
           { provider: "a", model: "m1", weight: 3, clientKey: expect.stringMatching(/^ct-\d+$/) },
           { provider: "b", model: "m2", weight: 1, clientKey: expect.stringMatching(/^ct-\d+$/) },
@@ -202,6 +205,21 @@ describe("combo-workspace-data", () => {
       [{ provider: "a", model: "m1" }, { provider: "b", model: "m2" }],
       map,
     )).toEqual(["low", "medium"]);
+  });
+
+  test("comboHasUnknownEffortTargets flags missing or empty ladders", () => {
+    const map = new Map<string, readonly string[] | undefined>([
+      ["a/m1", ["low", "medium"]],
+      ["b/m2", []],
+    ]);
+    expect(comboHasUnknownEffortTargets(
+      [{ provider: "a", model: "m1" }, { provider: "b", model: "m2" }],
+      map,
+    )).toBe(true);
+    expect(comboHasUnknownEffortTargets(
+      [{ provider: "a", model: "m1" }],
+      map,
+    )).toBe(false);
   });
 
   test("attention flags zero-target and one-target defensive rows", () => {

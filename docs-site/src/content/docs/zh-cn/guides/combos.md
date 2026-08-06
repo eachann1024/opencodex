@@ -129,7 +129,11 @@ combo 失败分为 **跳转** 失败和 **终止** 失败。
 
 如果请求没有 `reasoning` 对象，opencodex 会创建一个。如果 `reasoning` 存在但没有 `effort` 属性，它会保留其他字段并添加默认值。调用方提供的 effort 永远不会被覆盖。
 
-当目标能力未知，或者不包含配置的 effort 时，opencodex 会省略默认值，并保持目标自身行为不变。支持的值是 `low`、`medium`、`high`、`xhigh`、`max` 和 `ultra`；省略该字段或将其设为 `null`，就会把 effort 完全交给调用方和目标。
+当目标能力未知，或者不包含配置的 effort 时，opencodex 会省略默认值，并保持目标自身行为不变。调试日志会区分 `unknown`（无阶梯元数据）与 `unsupported`（有阶梯但不含该值）。支持的值是 `low`、`medium`、`high`、`xhigh`、`max` 和 `ultra`；省略该字段或将其设为 `null`，就会把 effort 完全交给调用方和目标。
+
+## 图片 / 多模态能力
+
+默认情况下，combo 对外发布其目标输入模态的**交集**（只有每个目标都声明 image 时才启用图片）。设置 `imageInput: "disabled"` 可在目标都支持图片时仍强制纯文本——目录会从 `inputModalities` 去掉 `image`，带图请求会在调用任何目标前以 HTTP 400 拒绝。`"auto"`（或省略该字段）保留自动交集。
 
 ## 加密的 v2 子代理任务
 
@@ -210,6 +214,7 @@ combo 会存储在顶层的 `combos` 对象中，并以 combo id 作为键：
 | `strategy` | 否 | `"failover"` | `"failover"` 或 `"round-robin"`。 |
 | `stickyLimit` | 否 | `1` | 每次轮询选择可连续处理的成功请求数，范围为 1 到 100。 |
 | `defaultEffort` | 否 | `null` | `low`、`medium`、`high`、`xhigh`、`max` 或 `ultra`；仅当调用方省略 effort 且目标声明支持时才会应用。 |
+| `imageInput` | 否 | `"auto"` | `"auto"` 或 `"disabled"`；禁用后强制纯文本，且不能在目标不支持时强开图片。 |
 | `alias` | 否 | 无 | 可选的、已修剪的公开模型 id；使用上面的别名规则。空值会以“无别名”形式存储。 |
 
 ## 故障排查
