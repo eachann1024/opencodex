@@ -50,6 +50,7 @@ function normalizedCombo(
     strategy: "failover",
     stickyLimit: 1,
     defaultEffort: "medium",
+    imageInput: "auto",
     alias: null,
     targets: [
       { provider: "a", model: "m1", weight: 1 },
