@@ -841,15 +841,18 @@ describe("combo catalog capability intersection", () => {
       contextCapped: true,
     });
     // Cap above the fallback leaves 128k (no artificial raise, no capped flag).
-    expect(resolveComboCatalogMember(
+    const aboveCap = resolveComboCatalogMember(
       { provider: "a", model: "ghost" },
       new Map(),
       new Map([["a", { adapter: "openai-chat", baseUrl: "https://a.example/v1" }]]),
       200_000,
-    )).toMatchObject({
+    );
+    expect(aboveCap).toMatchObject({
       contextWindow: 128_000,
       maxInputTokens: 128_000,
     });
+    // Cap may be recorded for bookkeeping (contextCapped: false) but must not claim a clamp.
+    expect(aboveCap?.contextCapped).toBeFalsy();
     // No provider entry and no discovery row — cannot invent a member.
     expect(resolveComboCatalogMember(
       { provider: "missing", model: "ghost" },

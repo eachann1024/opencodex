@@ -607,6 +607,7 @@ export function applyConfigHintsToCachedModels(name: string, prov: OcxProviderCo
   return models.map(model => applyProviderConfigHints(name, prov, model, contextCap));
 }
 
+
 /**
  * Last-resort context window for combo member synthesis when discovery and
  * provider config both omit one. Matches the catalog entry default in
@@ -619,9 +620,9 @@ const COMBO_MEMBER_CONTEXT_FALLBACK = 128_000;
  * Prefer discovery metadata; when the target is missing from the gather map or
  * lacks a positive contextWindow, synthesize from the (registry-enriched)
  * provider config so combos remain catalogued when targets are configured but
- * discovery metadata is incomplete. Disabled/missing providers stay unresolved.
- * When hints still omit contextWindow, apply COMBO_MEMBER_CONTEXT_FALLBACK so a
- * live row without ctx (common for LiteLLM / custom xai ids) does not drop the
+ * discovery metadata is incomplete. Disabled providers stay unresolved.
+ * When hints still omit contextWindow, prefer known maxInputTokens, else
+ * COMBO_MEMBER_CONTEXT_FALLBACK so a live row without ctx does not drop the
  * whole combo from the public catalog.
  */
 export function resolveComboCatalogMember(
@@ -661,8 +662,6 @@ export function resolveComboCatalogMember(
     id: target.model,
     provider: target.provider,
   };
-  // Reuse the same hint path configured/static catalog rows use when a provider
-  // config exists; otherwise keep the base (possibly incomplete) discovery row.
   const hinted = prov
     ? applyProviderConfigHints(target.provider, prov, base, contextCap)
     : base;
@@ -676,16 +675,10 @@ export function resolveComboCatalogMember(
     : (typeof base.maxInputTokens === "number" && base.maxInputTokens > 0
       ? base.maxInputTokens
       : undefined);
-  // Prefer config/discovery; fall back so incomplete live rows still catalog.
-  // Pure ghosts (no discovery row) on a known provider still synthesize: live
-  // discovery is often incomplete for LiteLLM/custom relays, and dropping the
-  // whole combo solely for a missing /v1/models row is worse than a stub window.
   const uncappedContext = hintedContext
     ?? knownMaxInput
     ?? (existing || prov ? COMBO_MEMBER_CONTEXT_FALLBACK : undefined);
   if (uncappedContext === undefined) return undefined;
-  // Fallback bypasses applyProviderConfigHints' cap path — clamp here so a
-  // providerContextCaps value below 128k still wins (same semantics as hints).
   const usedFallback = hintedContext === undefined;
   const cappedContext = applyProviderContextCap(uncappedContext, contextCap);
   const contextWindow = cappedContext ?? uncappedContext;
@@ -695,8 +688,6 @@ export function resolveComboCatalogMember(
     && cappedContext !== uncappedContext;
 
   const inputModalities = hinted.inputModalities ?? base.inputModalities ?? ["text"];
-  // applyProviderConfigHints already folds configuredReasoningEfforts; keep an
-  // explicit fallback for stubs that only had base fields.
   const reasoningEfforts = hinted.reasoningEfforts
     ?? (prov ? configuredReasoningEfforts(prov, target.model) : undefined)
     ?? base.reasoningEfforts;
@@ -843,6 +834,17 @@ function modelInputModalities(
     value === "text" || value === "image" || value === "audio"
   ));
   if (explicit && explicit.length > 0) return explicit;
+  const architecture = plainRecord(item.architecture);
+  const architectureModality = typeof architecture?.modality === "string"
+    ? normalizedMetadataString(architecture.modality, 64)
+    : undefined;
+  if (architectureModality?.includes("->")) {
+    const [rawInput = ""] = architectureModality.split("->");
+    const inferred = rawInput
+      .split("+")
+      .filter(value => value === "text" || value === "image" || value === "audio");
+    if (inferred.length > 0) return [...new Set(inferred)];
+  }
   if (capabilityRecord?.vision === false) return ["text"];
   if (capabilityRecord?.vision === true || capabilities?.some(value => value === "vision" || value === "image-input")) {
     return ["text", "image"];
