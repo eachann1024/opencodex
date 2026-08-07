@@ -13,6 +13,7 @@ import {
   toPutBody,
   validateComboDraft,
 } from "../gui/src/combo-workspace-data";
+import { comboImagesSupported } from "../gui/src/combo-capabilities";
 
 const configuredProviders = {
   a: {},
@@ -89,6 +90,7 @@ describe("combo-workspace-data", () => {
         strategy: "failover",
         stickyLimit: 1,
         defaultEffort: null,
+        imageInput: "auto",
         targets: [{ provider: "a", model: "m1", weight: 1, clientKey: expect.stringMatching(/^ct-\d+$/) }],
       },
       {
@@ -98,6 +100,7 @@ describe("combo-workspace-data", () => {
         strategy: "round-robin",
         stickyLimit: 4,
         defaultEffort: "high",
+        imageInput: "auto",
         targets: [
           { provider: "a", model: "m1", weight: 3, clientKey: expect.stringMatching(/^ct-\d+$/) },
           { provider: "b", model: "m2", weight: 1, clientKey: expect.stringMatching(/^ct-\d+$/) },
@@ -426,6 +429,40 @@ describe("combo-workspace-data", () => {
     expect(draftEquals(
       { ...baseline, alias: "deepseek-v4-flash" },
       { ...baseline, alias: null },
+    )).toBe(false);
+  });
+});
+
+
+describe("comboImagesSupported", () => {
+  test("returns false with no complete targets", () => {
+    expect(comboImagesSupported([], [])).toBe(false);
+    expect(comboImagesSupported([{ provider: "", model: "" }], [])).toBe(false);
+  });
+
+  test("returns true only when every complete target advertises image", () => {
+    const models = [
+      { provider: "a", id: "m1", inputModalities: ["text", "image"] },
+      { provider: "b", id: "m2", inputModalities: ["text", "image"] },
+    ];
+    expect(comboImagesSupported(
+      [{ provider: "a", model: "m1" }, { provider: "b", model: "m2" }],
+      models,
+    )).toBe(true);
+  });
+
+  test("returns false when any target is missing from the catalog or lacks image", () => {
+    const models = [
+      { provider: "a", id: "m1", inputModalities: ["text", "image"] },
+      { provider: "b", id: "m2", inputModalities: ["text"] },
+    ];
+    expect(comboImagesSupported(
+      [{ provider: "a", model: "m1" }, { provider: "b", model: "m2" }],
+      models,
+    )).toBe(false);
+    expect(comboImagesSupported(
+      [{ provider: "a", model: "m1" }, { provider: "b", model: "ghost" }],
+      models,
     )).toBe(false);
   });
 });
